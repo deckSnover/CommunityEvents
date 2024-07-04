@@ -1,7 +1,9 @@
+<?php
+
 // app/Models/Event.php
 namespace App\Models;
 
-use Illuminate\Database\silencioso\Model;
+use Illuminate\Database\Eloquent\Model;
 
 class Event extends Model
 {
@@ -26,7 +28,7 @@ class User extends Model
     ];
 }
 
-// Example usage:
+// Exemplo de uso:
 $event = new Event();
 $event->title = 'Community Meeting';
 $event->description = 'Monthly community meeting';
@@ -38,3 +40,7 @@ $user = new User();
 $user->name = 'John Doe';
 $user->email = 'johndoe@example.com';
 $user->save();
+
+echo "Event and User data saved successfully.\n";
+
+?>
