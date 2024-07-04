@@ -1,112 +1,201 @@
-# Documentação: Configuração e Execução da Plataforma de Gerenciamento de Eventos Comunitários
+## Plataforma de Gerenciamento de Eventos Comunitários com Integração de Banco de Dados
 
-## Passo a Passo Detalhado
+### Visão Geral
 
-### 1. Clonar o Repositório
+Esta documentação descreve como configurar, testar e executar uma plataforma de gerenciamento de eventos comunitários que utiliza um banco de dados PostgreSQL para armazenar informações sobre eventos e mensagens entre os usuários.
 
-```bash
-git clone https://github.com/seu_usuario/CommunityEvents.git
-cd CommunityEvents
-```
+### Pré-requisitos
 
-### 2. Criar o Ambiente Virtual
+- PostgreSQL instalado e configurado.
+- Python 3.10 e ambiente virtual (`venv`) configurado.
+- Bibliotecas necessárias instaladas:
+  - Flask
+  - Flask-SQLAlchemy
+  - Psycopg2
+- Biblioteca `libpqxx` para C++.
 
-```bash
-python3 -m venv myenv
-```
+## Passo a Passo
 
-### 3. Ativar o Ambiente Virtual
+#### 1. Configuração do Banco de Dados PostgreSQL
 
-- No Linux/MacOS:
-  ```bash
-  source myenv/bin/activate
-  ```
-- No Windows:
-  ```bash
-  myenv\Scripts\activate
-  ```
+##### Estrutura das Tabelas
 
-### 4. Instalar as Dependências
+1. **Tabela `Event`**:
+    - `id`: Identificador único do evento (inteiro, chave primária)
+    - `name`: Nome do evento (string, não nulo)
+    - `description`: Descrição do evento (texto, não nulo)
+    - `date`: Data do evento (data, não nulo)
 
-Crie um arquivo `requirements.txt` com o seguinte conteúdo:
+2. **Tabela `Message`**:
+    - `id`: Identificador único da mensagem (inteiro, chave primária)
+    - `sender`: Remetente da mensagem (string, não nulo)
+    - `receiver`: Destinatário da mensagem (string, não nulo)
+    - `content`: Conteúdo da mensagem (texto, não nulo)
+    - `timestamp`: Carimbo de data/hora da mensagem (data e hora, padrão para a hora atual, não nulo)
 
-```txt
-Flask==2.0.2
-Flask-SQLAlchemy==2.5.1
-psycopg2-binary==2.9.3
-```
+##### Comandos SQL para Configuração do Banco de Dados
 
-E execute:
-
-```bash
-pip install -r requirements.txt
-```
-
-### 5. Configurar o Banco de Dados PostgreSQL
-
-Certifique-se de que o PostgreSQL está rodando e configure um banco de dados chamado `communityevents`:
+Execute os seguintes comandos SQL para criar o banco de dados e as tabelas:
 
 ```sql
 CREATE DATABASE communityevents;
 CREATE USER community_admin WITH PASSWORD 'sua_senha';
 GRANT ALL PRIVILEGES ON DATABASE communityevents TO community_admin;
+
+\c communityevents
+
+CREATE TABLE Event (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    description TEXT NOT NULL,
+    date DATE NOT NULL
+);
+
+CREATE TABLE Message (
+    id SERIAL PRIMARY KEY,
+    sender VARCHAR(100) NOT NULL,
+    receiver VARCHAR(100) NOT NULL,
+    content TEXT NOT NULL,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
 ```
 
-### 6. Configurar a Aplicação Flask
+#### 2. Configuração do Ambiente Python
 
-Atualize as configurações de conexão com o banco de dados no arquivo `app.py`:
+##### Criação do Ambiente Virtual e Instalação das Dependências
+
+No diretório do seu projeto, execute os seguintes comandos:
+
+```bash
+python3 -m venv myenv
+source myenv/bin/activate
+pip install Flask Flask-SQLAlchemy psycopg2
+```
+
+> **Nota:** O diretório `myenv` será criado automaticamente após a execução do comando acima.
+
+#### 3. Arquivo `app.py`
+
+Crie e configure o arquivo `app.py` para a aplicação Flask:
 
 ```python
+from flask import Flask, request, jsonify
+from flask_sqlalchemy import SQLAlchemy
+
+app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://community_admin:sua_senha@localhost:5432/communityevents'
-```
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+db = SQLAlchemy(app)
 
-### 7. Criar as Tabelas do Banco de Dados
+class Event(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text, nullable=False)
+    date = db.Column(db.Date, nullable=False)
 
-```bash
-python app.py
-```
+class Message(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    sender = db.Column(db.String(100), nullable=False)
+    receiver = db.Column(db.String(100), nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    timestamp = db.Column(db.DateTime, default=db.func.current_timestamp(), nullable=False)
 
-### 8. Compilar o Conector C++
+@app.route('/events', methods=['POST'])
+def create_event():
+    data = request.get_json()
+    new_event = Event(name=data['name'], description=data['description'], date=data['date'])
+    db.session.add(new_event)
+    db.session.commit()
+    return jsonify({'message': 'Event created successfully'}), 201
 
-```bash
-g++ -o conector conector.cpp -lpqxx -lpq
-```
+@app.route('/events', methods=['GET'])
+def get_events():
+    events = Event.query.all()
+    return jsonify([{'id': e.id, 'name': e.name, 'description': e.description, 'date': e.date} for e in events]), 200
 
-### 9. Testar o Conector C++
+@app.route('/messages', methods=['POST'])
+def send_message():
+    data = request.get_json()
+    new_message = Message(sender=data['sender'], receiver=data['receiver'], content=data['content'])
+    db.session.add(new_message)
+    db.session.commit()
+    return jsonify({'message': 'Message sent successfully'}), 201
 
-```bash
-./conector
-```
+@app.route('/messages', methods=['GET'])
+def get_messages():
+    messages = Message.query.all()
+    return jsonify([{'id': m.id, 'sender': m.sender, 'receiver': m.receiver, 'content': m.content, 'timestamp': m.timestamp} for m in messages]), 200
 
-### 10. Iniciar a Aplicação
-
-```bash
-python app.py
-```
-
-### 11. Acessar a Aplicação
-
-Abra um navegador e acesse:
-
-```
-http://localhost:5000
-```
-
-## Observação sobre a Porta
-
-Para alterar a porta padrão, modifique o arquivo `app.py`:
-
-```python
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-    app.run(debug=True, port=3000)  # Altere para a porta desejada
+    app.run(debug=True)
 ```
 
-## Observação sobre o Diretório `myenv`
+#### 4. Testando a Conexão ao Banco de Dados com C++
 
-O diretório `myenv` será criado automaticamente durante o processo de configuração do ambiente virtual. Não é necessário criá-lo manualmente.
+Crie um arquivo `conector.cpp` com o seguinte conteúdo:
 
-## Conclusão
+```cpp
+#include <iostream>
+#include <pqxx/pqxx>
 
-Seguindo esses passos, você terá configurado e iniciado a plataforma de gerenciamento de eventos comunitários. Se houver problemas, verifique os logs de erro e certifique-se de que todas as dependências e configurações estão corretas.
+using namespace std;
+using namespace pqxx;
+
+int main() {
+    try {
+        // Conectar ao banco de dados PostgreSQL
+        connection C("dbname=communityevents user=community_admin password=sua_senha host=localhost port=5432");
+
+        if (C.is_open()) {
+            cout << "Conexão bem-sucedida com o banco de dados PostgreSQL." << endl;
+
+            // Executar uma consulta para recuperar mensagens
+            nontransaction N(C);
+            result R(N.exec("SELECT id, sender, receiver, content, timestamp FROM messages"));
+
+            // Iterar sobre o resultado da consulta
+            for (result::const_iterator it = R.begin(); it != R.end(); ++it) {
+                cout << "ID: " << it[0].as<int>() << endl;
+                cout << "Sender: " << it[1].as<string>() << endl;
+                cout << "Receiver: " << it[2].as<string>() << endl;
+                cout << "Content: " << it[3].as<string>() << endl;
+                cout << "Timestamp: " << it[4].as<string>() << endl << endl;
+            }
+
+            cout << "Consulta executada com sucesso." << endl;
+        } else {
+            cout << "Falha ao conectar ao banco de dados PostgreSQL." << endl;
+            return 1;
+        }
+
+        C.disconnect();
+    } catch (const std::exception &e) {
+        cerr << e.what() << endl;
+        return 1;
+    }
+
+    return 0;
+}
+```
+
+Compile e execute o programa C++:
+
+```bash
+g++ -o conector conector.cpp -lpqxx -lpq
+./conector
+```
+
+#### 5. Executando a Aplicação Flask
+
+Para iniciar a aplicação Flask, execute o seguinte comando:
+
+```bash
+python app.py
+```
+
+#### 6. Notas Finais
+
+- **Portas do Banco de Dados**: Certifique-se de que a porta 5432 (ou outra porta configurada) esteja aberta e acessível.
+- **Arquivo `myenv`**: Este diretório será criado automaticamente ao configurar o ambiente virtual e instalar as dependências necessárias.
