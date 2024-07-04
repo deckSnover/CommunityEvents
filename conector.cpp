@@ -1,55 +1,41 @@
 #include <iostream>
-#include <string>
-#include <curl/curl.h>
+#include <pqxx/pqxx>
 
 using namespace std;
-
-static size_t write_memory(void *ptr, size_t size, size_t nmemb, void *data) {
-    size_t realsize = size * nmemb;
-    struct MemoryStruct *mem = (struct MemoryStruct *)data;
-
-    mem->memory = (char *)realloc(mem->memory, mem->size + realsize + 1);
-    memcpy(&(mem->memory[mem->size]), ptr, realsize);
-    mem->size += realsize;
-    mem->memory[mem->size] = 0;
-
-    return realsize;
-}
-
-struct MemoryStruct {
-    char *memory;
-    size_t size;
-};
+using namespace pqxx;
 
 int main() {
-    CURL *curl;
-    CURLcode res;
-    struct MemoryStruct chunk;
+    try {
+        // Conectar ao banco de dados PostgreSQL
+        connection C("dbname=communityevents user=seu_usuario password=sua_senha host=seu_host port=sua_porta");
 
-    chunk.memory = (char *)malloc(1);
-    chunk.size = 0;
+        if (C.is_open()) {
+            cout << "Conexão bem-sucedida com o banco de dados PostgreSQL." << endl;
 
-    curl_global_init(CURL_GLOBAL_DEFAULT);
-    curl = curl_easy_init();
-    if(curl) {
-        string url = "https://localhost:5001/api/chat/igordrims/CynthiaCristina";
-        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_memory);
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &chunk);
+            // Executar uma consulta para recuperar mensagens
+            nontransaction N(C);
+            result R(N.exec("SELECT id, sender, receiver, content, timestamp FROM messages"));
 
-        res = curl_easy_perform(curl);
+            // Iterar sobre o resultado da consulta
+            for (result::const_iterator it = R.begin(); it != R.end(); ++it) {
+                cout << "ID: " << it[0].as<int>() << endl;
+                cout << "Sender: " << it[1].as<string>() << endl;
+                cout << "Receiver: " << it[2].as<string>() << endl;
+                cout << "Content: " << it[3].as<string>() << endl;
+                cout << "Timestamp: " << it[4].as<string>() << endl << endl;
+            }
 
-        if(res != CURLE_OK) {
-            fprintf(stderr, "cURL error: %s\n", curl_easy_strerror(res));
+            cout << "Consulta executada com sucesso." << endl;
         } else {
-            printf("%s\n", chunk.memory);
+            cout << "Falha ao conectar ao banco de dados PostgreSQL." << endl;
+            return 1;
         }
 
-        curl_easy_cleanup(curl);
+        C.disconnect();
+    } catch (const std::exception &e) {
+        cerr << e.what() << endl;
+        return 1;
     }
-
-    curl_global_cleanup();
-    free(chunk.memory);
 
     return 0;
 }
